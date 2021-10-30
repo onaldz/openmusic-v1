@@ -3,6 +3,7 @@ const { nanoid } = require('nanoid');
 const InvariantError = require('../../exceptions/InvariantError');
 const NotFoundError = require('../../exceptions/NotFountError');
 const { mapDBGetAll, mapDBGetDetail } = require('../../utils');
+const AuthorizationError = require('../../exceptions/AuthorizationError');
 
 class SongsService {
   constructor() {
@@ -10,15 +11,15 @@ class SongsService {
   }
 
   async addSong({
-    title, year, performer, genre, duration,
+    title, year, performer, genre, duration, owner,
   }) {
     const id = nanoid(16);
     const insertedAt = new Date().toISOString();
     const updatedAt = insertedAt;
 
     const query = {
-      text: 'INSERT INTO songs VALUES($1, $2, $3, $4, $5, $6, $7,$8) RETURNING id',
-      values: [id, title, year, performer, genre, duration, insertedAt, updatedAt],
+      text: 'INSERT INTO songs VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id',
+      values: [id, title, year, performer, genre, duration, insertedAt, updatedAt, owner],
     };
 
     const result = await this._pool.query(query);
@@ -30,8 +31,12 @@ class SongsService {
     return result.rows[0].id;
   }
 
-  async getSongs() {
-    const result = await this._pool.query('SELECT * FROM songs');
+  async getSongs(owner) {
+    const query = {
+      text: 'SELECT * FROM songs WHERE owner = $1',
+      values: [owner],
+    };
+    const result = await this._pool.query(query);
     return result.rows.map(mapDBGetAll);
   }
 
@@ -75,6 +80,22 @@ class SongsService {
 
     if (!result.rows.length) {
       throw new NotFoundError('Lagu gagal dihapus. Id tidak ditemukan');
+    }
+  }
+
+  // Code Baru
+  async verifySongOwner(id, owner) {
+    const query = {
+      text: 'SELECT * FROM songs WHERE id = $1',
+      values: [id],
+    };
+    const result = await this._pool.query(query);
+    if (!result.rows.length) {
+      throw new NotFoundError('Lagu tidak ditemukan');
+    }
+    const song = result.rows[0];
+    if (song.owner !== owner) {
+      throw new AuthorizationError('Anda tidak berhak mengakses resource ini');
     }
   }
 }
